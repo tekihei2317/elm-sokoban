@@ -1,1 +1,1 @@
-# elm-sokoban
+# elm-sokoban-game
