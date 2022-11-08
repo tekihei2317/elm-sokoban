@@ -1,20 +1,42 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Events exposing (onKeyDown)
 import Html exposing (..)
 import Html.Attributes exposing (class)
+import Json.Decode as Decode
 
 
 main : Program () Model Msg
 main =
-    Browser.sandbox { init = initialModel, update = update, view = view }
+    Browser.element
+        { init = initialModel
+        , update = update
+        , view = view
+        , subscriptions = subscriptions
+        }
 
 
-initialModel : Model
-initialModel =
-    { counter = 0
-    , stage = initialStage
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ onKeyDown (Decode.map Keypress keyDecoder)
+        ]
+
+
+type alias Position =
+    { x : Int
+    , y : Int
     }
+
+
+initialModel : () -> ( Model, Cmd msg )
+initialModel _ =
+    ( { playerPosition = { x = 1, y = 1 }
+      , stage = initialStage
+      }
+    , Cmd.none
+    )
 
 
 initialStage : List String
@@ -30,24 +52,70 @@ initialStage =
 
 
 type alias Model =
-    { counter : Int
+    { playerPosition : Position
     , stage : List String
     }
 
 
+type Direction
+    = Left
+    | Right
+    | Up
+    | Down
+    | Other
+
+
+toDirection : String -> Direction
+toDirection string =
+    case string of
+        "ArrowLeft" ->
+            Left
+
+        "ArrowRight" ->
+            Right
+
+        "ArrowUp" ->
+            Up
+
+        "ArrowDown" ->
+            Down
+
+        _ ->
+            Other
+
+
+keyDecoder =
+    Decode.map toDirection (Decode.field "key" Decode.string)
+
+
 type Msg
-    = Increment
-    | Decrement
+    = Keypress Direction
 
 
-update : Msg -> Model -> Model
+updatePosition : Direction -> Position -> Position
+updatePosition direction position =
+    case direction of
+        Up ->
+            { position | y = position.y - 1 }
+
+        Down ->
+            { position | y = position.y + 1 }
+
+        Right ->
+            { position | x = position.x + 1 }
+
+        Left ->
+            { position | x = position.x - 1 }
+
+        _ ->
+            position
+
+
+update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     case msg of
-        Increment ->
-            { model | counter = model.counter + 1 }
-
-        Decrement ->
-            { model | counter = model.counter - 1 }
+        Keypress direction ->
+            ( { model | playerPosition = updatePosition direction model.playerPosition }, Cmd.none )
 
 
 type Cell
@@ -76,11 +144,12 @@ stringToCell str =
         Empty
 
 
-cellClass : Cell -> String
-cellClass cell =
+getCellClass : Cell -> String
+getCellClass cell =
     case cell of
+        -- プレイヤーは位置をもとにクラスをつける
         Player ->
-            "player"
+            ""
 
         Wall ->
             "wall"
@@ -100,21 +169,28 @@ cn classNames =
     String.join " " classNames
 
 
-stageCell : String -> Html msg
-stageCell cellString =
+stageCell : Position -> Int -> Int -> String -> Html msg
+stageCell playerPosition rowNumber colNumber cellString =
     let
         cell =
             cellString |> stringToCell
+
+        cellClass =
+            if playerPosition == { y = rowNumber, x = colNumber } then
+                "player"
+
+            else
+                getCellClass cell
     in
-    div [ class (cn [ "cell", cellClass cell ]) ] []
+    div [ class (cn [ "cell", cellClass ]) ] []
 
 
-stageLine : String -> Html msg
-stageLine line =
-    div [ class "board-row" ] (List.map stageCell (String.split "" line))
+stageLine : Position -> Int -> String -> Html msg
+stageLine playerPosition rowNumber line =
+    div [ class "board-row" ] (List.indexedMap (stageCell playerPosition rowNumber) (String.split "" line))
 
 
 view : Model -> Html Msg
 view model =
     div []
-        (List.map stageLine model.stage)
+        (List.indexedMap (stageLine model.playerPosition) model.stage)
