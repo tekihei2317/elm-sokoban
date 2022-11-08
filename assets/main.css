@@ -1,0 +1,36 @@
+.board-row {
+  display: flex;
+}
+
+.cell {
+  width: 48px;
+  height: 48px;
+  border-radius: 5px;
+  margin: 1px;
+}
+
+.cell.player {
+  background-image: url("/assets/left.png");
+  background-size: 100%;
+}
+
+.cell.wall {
+  background-image: url("/assets/wall.png");
+  background-size: 100%;
+}
+
+.cell.box {
+  background-image: url("/assets/box-closed.png");
+  background-size: 100%;
+}
+
+.cell.objective {
+  background-image: url("/assets/key.svg");
+  background-size: 50%;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.cell.empty {
+  background-color: white;
+}
