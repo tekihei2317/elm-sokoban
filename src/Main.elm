@@ -1,9 +1,11 @@
 module Main exposing (main)
 
+import Array exposing (Array)
 import Browser
 import Browser.Events exposing (onKeyDown)
 import Html exposing (..)
 import Html.Attributes exposing (class)
+import Html.Events
 import Json.Decode as Decode
 
 
@@ -30,10 +32,18 @@ type alias Position =
     }
 
 
+type alias Model =
+    { stage : Array (Array Cell)
+    , line : Array Int
+    , playerPosition : Position
+    }
+
+
 initialModel : () -> ( Model, Cmd msg )
 initialModel _ =
-    ( { playerPosition = { x = 1, y = 1 }
-      , stage = initialStage
+    ( { stage = initialStage |> convertStringStage
+      , line = Array.initialize 5 identity
+      , playerPosition = { y = 1, x = 1 }
       }
     , Cmd.none
     )
@@ -51,10 +61,9 @@ initialStage =
     ]
 
 
-type alias Model =
-    { playerPosition : Position
-    , stage : List String
-    }
+convertStringStage : List String -> Array (Array Cell)
+convertStringStage stage =
+    stage |> Array.fromList |> Array.map (\line -> line |> String.split "" |> List.map stringToCell |> Array.fromList)
 
 
 type Direction
@@ -90,6 +99,7 @@ keyDecoder =
 
 type Msg
     = Keypress Direction
+    | Increment
 
 
 updatePosition : Direction -> Position -> Position
@@ -111,31 +121,80 @@ updatePosition direction position =
             position
 
 
+type alias Neighborhood =
+    { current : Maybe Cell
+    , next : Maybe Cell
+    , afterNext : Maybe Cell
+    }
+
+
+updateNeighborhood : Neighborhood -> Neighborhood
+updateNeighborhood cells =
+    cells
+
+
+updateStage : Array (Array Cell) -> Direction -> Position -> Array (Array Cell)
+updateStage stage direction playerPosition =
+    -- 現在のマス、次のマス、その次のマスを取得する
+    -- 更新のロジックを書く（判定処理）
+    -- ステージを更新する
+    let
+        currentCell =
+            Empty
+
+        maybeLine =
+            Array.get 1 stage
+    in
+    case maybeLine of
+        Nothing ->
+            stage
+
+        Just line ->
+            stage |> Array.set 1 (line |> Array.set 1 Empty)
+
+
+incrementLine : Array Int -> Array Int
+incrementLine line =
+    line |> Array.set 0 3 |> Array.set 1 1 |> Array.set 2 4 |> Array.set 3 1 |> Array.set 4 5
+
+
 update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     case msg of
         Keypress direction ->
-            ( { model | playerPosition = updatePosition direction model.playerPosition }, Cmd.none )
+            ( { model
+                | stage = updateStage model.stage direction model.playerPosition
+                , playerPosition = updatePosition direction model.playerPosition
+              }
+            , Cmd.none
+            )
+
+        Increment ->
+            ( { model | line = incrementLine model.line }, Cmd.none )
+
+
+type alias OnObjective =
+    Bool
 
 
 type Cell
-    = Player
-    | Wall
-    | Box
+    = Empty
     | Objective
-    | Empty
+    | Wall
+    | Player OnObjective
+    | Box OnObjective
 
 
 stringToCell : String -> Cell
 stringToCell str =
     if str == "@" then
-        Player
+        Player False
 
     else if str == "#" then
         Wall
 
     else if str == "$" then
-        Box
+        Box False
 
     else if str == "." then
         Objective
@@ -148,13 +207,13 @@ getCellClass : Cell -> String
 getCellClass cell =
     case cell of
         -- プレイヤーは位置をもとにクラスをつける
-        Player ->
-            ""
+        Player _ ->
+            "player"
 
         Wall ->
             "wall"
 
-        Box ->
+        Box _ ->
             "box"
 
         Objective ->
@@ -169,28 +228,24 @@ cn classNames =
     String.join " " classNames
 
 
-stageCell : Position -> Int -> Int -> String -> Html msg
-stageCell playerPosition rowNumber colNumber cellString =
+stageCell : Int -> Int -> Cell -> Html msg
+stageCell rowNumber colNumber cell =
     let
-        cell =
-            cellString |> stringToCell
-
         cellClass =
-            if playerPosition == { y = rowNumber, x = colNumber } then
-                "player"
-
-            else
-                getCellClass cell
+            getCellClass cell
     in
     div [ class (cn [ "cell", cellClass ]) ] []
 
 
-stageLine : Position -> Int -> String -> Html msg
-stageLine playerPosition rowNumber line =
-    div [ class "board-row" ] (List.indexedMap (stageCell playerPosition rowNumber) (String.split "" line))
+stageLine : Int -> Array Cell -> Html msg
+stageLine rowNumber line =
+    div [ class "board-row" ] (line |> Array.toList |> List.indexedMap (stageCell rowNumber))
 
 
 view : Model -> Html Msg
 view model =
     div []
-        (List.indexedMap (stageLine model.playerPosition) model.stage)
+        [ div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
+        , div [] (model.line |> Array.toList |> List.map (\number -> span [] [ text (String.fromInt number) ]))
+        , button [ Html.Events.onClick Increment ] [ text "Increment" ]
+        ]
