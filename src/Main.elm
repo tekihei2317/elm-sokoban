@@ -128,29 +128,147 @@ type alias Neighborhood =
     }
 
 
+wrapCellsWithJust : Cell -> Cell -> Cell -> Neighborhood
+wrapCellsWithJust cell nextCell afterNextCell =
+    { current = Just cell
+    , next = Just nextCell
+    , afterNext = Just afterNextCell
+    }
+
+
+updateJustNeighborhood : Cell -> Cell -> Cell -> Neighborhood
+updateJustNeighborhood cell nextCell afterNextCell =
+    let
+        noChange =
+            wrapCellsWithJust cell nextCell afterNextCell
+    in
+    case cell of
+        Player onObjective ->
+            case nextCell of
+                Empty ->
+                    wrapCellsWithJust
+                        (if onObjective then
+                            Objective
+
+                         else
+                            Empty
+                        )
+                        (Player False)
+                        afterNextCell
+
+                Objective ->
+                    wrapCellsWithJust
+                        (if onObjective then
+                            Objective
+
+                         else
+                            Empty
+                        )
+                        (Player True)
+                        afterNextCell
+
+                _ ->
+                    noChange
+
+        _ ->
+            noChange
+
+
 updateNeighborhood : Neighborhood -> Neighborhood
 updateNeighborhood cells =
-    cells
+    -- Maybeがつらいだろうなぁ
+    case cells.current of
+        Nothing ->
+            cells
+
+        Just cell ->
+            case cells.next of
+                Nothing ->
+                    cells
+
+                Just nextCell ->
+                    case cells.afterNext of
+                        Nothing ->
+                            cells
+
+                        Just afterNextCell ->
+                            updateJustNeighborhood cell nextCell afterNextCell
+
+
+getNextPosition : Direction -> Position -> Position
+getNextPosition direction position =
+    case direction of
+        Up ->
+            { position | y = position.y - 1 }
+
+        Down ->
+            { position | y = position.y + 1 }
+
+        Right ->
+            { position | x = position.x + 1 }
+
+        Left ->
+            { position | x = position.x - 1 }
+
+        _ ->
+            position
+
+
+getNeighborhood : Array (Array Cell) -> Direction -> Position -> Neighborhood
+getNeighborhood stage direction position =
+    let
+        nextPosition =
+            position |> getNextPosition direction
+
+        afterNextPosition =
+            nextPosition |> getNextPosition direction
+    in
+    { current = stage |> Array.get position.y |> Maybe.andThen (Array.get position.x)
+    , next = stage |> Array.get nextPosition.y |> Maybe.andThen (Array.get nextPosition.x)
+    , afterNext = stage |> Array.get afterNextPosition.y |> Maybe.andThen (Array.get afterNextPosition.x)
+    }
+
+
+type alias Stage =
+    Array (Array Cell)
+
+
+updateCell : Position -> Maybe Cell -> Stage -> Stage
+updateCell position maybeCell stage =
+    let
+        maybeRow =
+            stage |> Array.get position.y
+    in
+    -- つらい
+    case maybeCell of
+        Nothing ->
+            stage
+
+        Just cell ->
+            case maybeRow of
+                Nothing ->
+                    stage
+
+                Just row ->
+                    stage |> Array.set position.y (row |> Array.set position.x cell)
 
 
 updateStage : Array (Array Cell) -> Direction -> Position -> Array (Array Cell)
 updateStage stage direction playerPosition =
-    -- 現在のマス、次のマス、その次のマスを取得する
-    -- 更新のロジックを書く（判定処理）
-    -- ステージを更新する
     let
-        currentCell =
-            Empty
+        updatedNeighborhood =
+            getNeighborhood stage direction playerPosition |> updateNeighborhood
 
-        maybeLine =
-            Array.get 1 stage
+        nextPosition =
+            playerPosition |> getNextPosition direction
+
+        afterNextPosition =
+            nextPosition |> getNextPosition direction
     in
-    case maybeLine of
-        Nothing ->
-            stage
-
-        Just line ->
-            stage |> Array.set 1 (line |> Array.set 1 Empty)
+    stage
+        |> updateCell playerPosition updatedNeighborhood.current
+        |> updateCell nextPosition updatedNeighborhood.next
+        |> updateCell afterNextPosition updatedNeighborhood.afterNext
 
 
 incrementLine : Array Int -> Array Int
