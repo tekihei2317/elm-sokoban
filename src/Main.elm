@@ -34,6 +34,8 @@ type alias Position =
 type alias Model =
     { stage : Array (Array Cell)
     , playerPosition : Position
+    , totalBoxCount : Int
+    , openedBoxCount : Int
     }
 
 
@@ -41,6 +43,8 @@ initialModel : () -> ( Model, Cmd msg )
 initialModel _ =
     ( { stage = initialStage |> convertStringStage
       , playerPosition = { y = 1, x = 1 }
+      , totalBoxCount = 2
+      , openedBoxCount = 0
       }
     , Cmd.none
     )
@@ -132,11 +136,21 @@ wrapCellsWithJust cell nextCell afterNextCell =
     }
 
 
-updateJustNeighborhood : Cell -> Cell -> Cell -> ( Neighborhood, Bool )
+type alias UpdateNeighborhoodResult =
+    { neighborhood : Neighborhood
+    , isPlayerMoved : Bool
+    , openedBoxCountDiff : Int
+    }
+
+
+updateJustNeighborhood : Cell -> Cell -> Cell -> UpdateNeighborhoodResult
 updateJustNeighborhood cell nextCell afterNextCell =
     let
         noChange =
-            wrapCellsWithJust cell nextCell afterNextCell
+            { neighborhood = wrapCellsWithJust cell nextCell afterNextCell
+            , isPlayerMoved = False
+            , openedBoxCountDiff = 0
+            }
 
         cellAfterPlayerMoved isPlayerOnObjective =
             if isPlayerOnObjective then
@@ -150,69 +164,94 @@ updateJustNeighborhood cell nextCell afterNextCell =
             case nextCell of
                 -- 隣のマスが空マスの場合
                 Empty ->
-                    ( wrapCellsWithJust
-                        (cellAfterPlayerMoved onObjective)
-                        (Player False)
-                        afterNextCell
-                    , True
-                    )
+                    { neighborhood =
+                        wrapCellsWithJust
+                            (cellAfterPlayerMoved onObjective)
+                            (Player False)
+                            afterNextCell
+                    , isPlayerMoved = True
+                    , openedBoxCountDiff = 0
+                    }
 
                 -- 隣のマスがゴールの場合
                 Objective ->
-                    ( wrapCellsWithJust
-                        (cellAfterPlayerMoved onObjective)
-                        (Player True)
-                        afterNextCell
-                    , True
-                    )
+                    { neighborhood =
+                        wrapCellsWithJust
+                            (cellAfterPlayerMoved onObjective)
+                            (Player True)
+                            afterNextCell
+                    , isPlayerMoved = True
+                    , openedBoxCountDiff = 0
+                    }
 
                 -- 隣のマスが宝箱の場合
                 Box isNextOnObject ->
                     case afterNextCell of
                         -- 隣の隣のマスが空の場合
                         Empty ->
-                            ( wrapCellsWithJust
-                                (cellAfterPlayerMoved onObjective)
-                                (Player isNextOnObject)
-                                (Box False)
-                            , True
-                            )
+                            { neighborhood =
+                                wrapCellsWithJust
+                                    (cellAfterPlayerMoved onObjective)
+                                    (Player isNextOnObject)
+                                    (Box False)
+                            , isPlayerMoved = True
+                            , openedBoxCountDiff =
+                                if isNextOnObject then
+                                    -1
+
+                                else
+                                    0
+                            }
 
                         -- 隣の隣のマスがゴールの場合
                         Objective ->
-                            ( wrapCellsWithJust
-                                (cellAfterPlayerMoved onObjective)
-                                (Player isNextOnObject)
-                                (Box True)
-                            , True
-                            )
+                            { neighborhood =
+                                wrapCellsWithJust
+                                    (cellAfterPlayerMoved onObjective)
+                                    (Player isNextOnObject)
+                                    (Box True)
+                            , isPlayerMoved = True
+                            , openedBoxCountDiff =
+                                if isNextOnObject then
+                                    0
+
+                                else
+                                    1
+                            }
 
                         _ ->
-                            ( noChange, False )
+                            noChange
 
                 _ ->
-                    ( noChange, False )
+                    noChange
 
         _ ->
-            ( noChange, False )
+            noChange
 
 
-updateNeighborhood : Neighborhood -> ( Neighborhood, Bool )
+updateNeighborhood : Neighborhood -> UpdateNeighborhoodResult
 updateNeighborhood cells =
+    let
+        noChange =
+            { neighborhood = cells
+            , isPlayerMoved = False
+            , openedBoxCountDiff = 0
+            }
+    in
     -- Maybeがつらいだろうなぁ
     case cells.current of
         Nothing ->
-            ( cells, False )
+            noChange
 
         Just cell ->
             case cells.next of
                 Nothing ->
-                    ( cells, False )
+                    noChange
 
                 Just nextCell ->
                     case cells.afterNext of
                         Nothing ->
-                            ( cells, False )
+                            noChange
 
                         Just afterNextCell ->
                             updateJustNeighborhood cell nextCell afterNextCell
@@ -276,10 +315,17 @@ updateCell position maybeCell stage =
                     stage |> Array.set position.y (row |> Array.set position.x cell)
 
 
-updateStage : Stage -> Direction -> Position -> ( Stage, Bool )
+type alias UpdateStageResult =
+    { stage : Stage
+    , isPlayerMoved : Bool
+    , openedBoxCountDiff : Int
+    }
+
+
+updateStage : Stage -> Direction -> Position -> UpdateStageResult
 updateStage stage direction playerPosition =
     let
-        ( updatedNeighborhood, playerMoved ) =
+        { neighborhood, isPlayerMoved, openedBoxCountDiff } =
             getNeighborhood stage direction playerPosition |> updateNeighborhood
 
         nextPosition =
@@ -288,12 +334,14 @@ updateStage stage direction playerPosition =
         afterNextPosition =
             nextPosition |> getNextPosition direction
     in
-    ( stage
-        |> updateCell playerPosition updatedNeighborhood.current
-        |> updateCell nextPosition updatedNeighborhood.next
-        |> updateCell afterNextPosition updatedNeighborhood.afterNext
-    , playerMoved
-    )
+    { stage =
+        stage
+            |> updateCell playerPosition neighborhood.current
+            |> updateCell nextPosition neighborhood.next
+            |> updateCell afterNextPosition neighborhood.afterNext
+    , isPlayerMoved = isPlayerMoved
+    , openedBoxCountDiff = openedBoxCountDiff
+    }
 
 
 update : Msg -> Model -> ( Model, Cmd msg )
@@ -301,19 +349,20 @@ update msg model =
     case msg of
         Keypress direction ->
             let
-                ( updatedStage, playerMoved ) =
+                { stage, isPlayerMoved, openedBoxCountDiff } =
                     updateStage model.stage direction model.playerPosition
 
                 playerPosition =
-                    if playerMoved then
+                    if isPlayerMoved then
                         updatePosition direction model.playerPosition
 
                     else
                         model.playerPosition
             in
             ( { model
-                | stage = updatedStage
+                | stage = stage
                 , playerPosition = playerPosition
+                , openedBoxCount = model.openedBoxCount + openedBoxCountDiff
               }
             , Cmd.none
             )
@@ -382,7 +431,7 @@ cn classNames =
 
 
 stageCell : Int -> Int -> Cell -> Html msg
-stageCell rowNumber colNumber cell =
+stageCell _ _ cell =
     let
         cellClass =
             getCellClass cell
@@ -399,4 +448,13 @@ view : Model -> Html Msg
 view model =
     div []
         [ div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
+        , div [ class "clear-title" ]
+            [ text
+                (if model.totalBoxCount == model.openedBoxCount then
+                    "Game Clear!"
+
+                 else
+                    ""
+                )
+            ]
         ]

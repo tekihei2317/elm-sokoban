@@ -38,3 +38,7 @@
 .cell.empty {
   background-color: white;
 }
+
+.clear-title {
+  font-size: 22px;
+}
