@@ -136,7 +136,7 @@ wrapCellsWithJust cell nextCell afterNextCell =
     }
 
 
-updateJustNeighborhood : Cell -> Cell -> Cell -> Neighborhood
+updateJustNeighborhood : Cell -> Cell -> Cell -> ( Neighborhood, Bool )
 updateJustNeighborhood cell nextCell afterNextCell =
     let
         noChange =
@@ -146,7 +146,7 @@ updateJustNeighborhood cell nextCell afterNextCell =
         Player onObjective ->
             case nextCell of
                 Empty ->
-                    wrapCellsWithJust
+                    ( wrapCellsWithJust
                         (if onObjective then
                             Objective
 
@@ -155,9 +155,11 @@ updateJustNeighborhood cell nextCell afterNextCell =
                         )
                         (Player False)
                         afterNextCell
+                    , True
+                    )
 
                 Objective ->
-                    wrapCellsWithJust
+                    ( wrapCellsWithJust
                         (if onObjective then
                             Objective
 
@@ -166,30 +168,32 @@ updateJustNeighborhood cell nextCell afterNextCell =
                         )
                         (Player True)
                         afterNextCell
+                    , True
+                    )
 
                 _ ->
-                    noChange
+                    ( noChange, False )
 
         _ ->
-            noChange
+            ( noChange, False )
 
 
-updateNeighborhood : Neighborhood -> Neighborhood
+updateNeighborhood : Neighborhood -> ( Neighborhood, Bool )
 updateNeighborhood cells =
     -- Maybeがつらいだろうなぁ
     case cells.current of
         Nothing ->
-            cells
+            ( cells, False )
 
         Just cell ->
             case cells.next of
                 Nothing ->
-                    cells
+                    ( cells, False )
 
                 Just nextCell ->
                     case cells.afterNext of
                         Nothing ->
-                            cells
+                            ( cells, False )
 
                         Just afterNextCell ->
                             updateJustNeighborhood cell nextCell afterNextCell
@@ -253,10 +257,10 @@ updateCell position maybeCell stage =
                     stage |> Array.set position.y (row |> Array.set position.x cell)
 
 
-updateStage : Array (Array Cell) -> Direction -> Position -> Array (Array Cell)
+updateStage : Stage -> Direction -> Position -> ( Stage, Bool )
 updateStage stage direction playerPosition =
     let
-        updatedNeighborhood =
+        ( updatedNeighborhood, playerMoved ) =
             getNeighborhood stage direction playerPosition |> updateNeighborhood
 
         nextPosition =
@@ -265,10 +269,12 @@ updateStage stage direction playerPosition =
         afterNextPosition =
             nextPosition |> getNextPosition direction
     in
-    stage
+    ( stage
         |> updateCell playerPosition updatedNeighborhood.current
         |> updateCell nextPosition updatedNeighborhood.next
         |> updateCell afterNextPosition updatedNeighborhood.afterNext
+    , playerMoved
+    )
 
 
 incrementLine : Array Int -> Array Int
@@ -280,9 +286,20 @@ update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     case msg of
         Keypress direction ->
+            let
+                ( updatedStage, playerMoved ) =
+                    updateStage model.stage direction model.playerPosition
+
+                playerPosition =
+                    if playerMoved then
+                        updatePosition direction model.playerPosition
+
+                    else
+                        model.playerPosition
+            in
             ( { model
-                | stage = updateStage model.stage direction model.playerPosition
-                , playerPosition = updatePosition direction model.playerPosition
+                | stage = updatedStage
+                , playerPosition = playerPosition
               }
             , Cmd.none
             )
