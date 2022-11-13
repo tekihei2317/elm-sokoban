@@ -24,6 +24,10 @@
   background-size: 100%;
 }
 
+.cell.box.opened {
+  background-image: url("/assets/box-opened.png");
+}
+
 .cell.objective {
   background-image: url("/assets/key.svg");
   background-size: 50%;

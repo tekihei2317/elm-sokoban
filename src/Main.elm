@@ -5,7 +5,6 @@ import Browser
 import Browser.Events exposing (onKeyDown)
 import Html exposing (..)
 import Html.Attributes exposing (class)
-import Html.Events
 import Json.Decode as Decode
 
 
@@ -20,7 +19,7 @@ main =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.batch
         [ onKeyDown (Decode.map Keypress keyDecoder)
         ]
@@ -34,7 +33,6 @@ type alias Position =
 
 type alias Model =
     { stage : Array (Array Cell)
-    , line : Array Int
     , playerPosition : Position
     }
 
@@ -42,7 +40,6 @@ type alias Model =
 initialModel : () -> ( Model, Cmd msg )
 initialModel _ =
     ( { stage = initialStage |> convertStringStage
-      , line = Array.initialize 5 identity
       , playerPosition = { y = 1, x = 1 }
       }
     , Cmd.none
@@ -99,7 +96,6 @@ keyDecoder =
 
 type Msg
     = Keypress Direction
-    | Increment
 
 
 updatePosition : Direction -> Position -> Position
@@ -141,35 +137,58 @@ updateJustNeighborhood cell nextCell afterNextCell =
     let
         noChange =
             wrapCellsWithJust cell nextCell afterNextCell
+
+        cellAfterPlayerMoved isPlayerOnObjective =
+            if isPlayerOnObjective then
+                Objective
+
+            else
+                Empty
     in
     case cell of
         Player onObjective ->
             case nextCell of
+                -- 隣のマスが空マスの場合
                 Empty ->
                     ( wrapCellsWithJust
-                        (if onObjective then
-                            Objective
-
-                         else
-                            Empty
-                        )
+                        (cellAfterPlayerMoved onObjective)
                         (Player False)
                         afterNextCell
                     , True
                     )
 
+                -- 隣のマスがゴールの場合
                 Objective ->
                     ( wrapCellsWithJust
-                        (if onObjective then
-                            Objective
-
-                         else
-                            Empty
-                        )
+                        (cellAfterPlayerMoved onObjective)
                         (Player True)
                         afterNextCell
                     , True
                     )
+
+                -- 隣のマスが宝箱の場合
+                Box isNextOnObject ->
+                    case afterNextCell of
+                        -- 隣の隣のマスが空の場合
+                        Empty ->
+                            ( wrapCellsWithJust
+                                (cellAfterPlayerMoved onObjective)
+                                (Player isNextOnObject)
+                                (Box False)
+                            , True
+                            )
+
+                        -- 隣の隣のマスがゴールの場合
+                        Objective ->
+                            ( wrapCellsWithJust
+                                (cellAfterPlayerMoved onObjective)
+                                (Player isNextOnObject)
+                                (Box True)
+                            , True
+                            )
+
+                        _ ->
+                            ( noChange, False )
 
                 _ ->
                     ( noChange, False )
@@ -277,11 +296,6 @@ updateStage stage direction playerPosition =
     )
 
 
-incrementLine : Array Int -> Array Int
-incrementLine line =
-    line |> Array.set 0 3 |> Array.set 1 1 |> Array.set 2 4 |> Array.set 3 1 |> Array.set 4 5
-
-
 update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     case msg of
@@ -303,9 +317,6 @@ update msg model =
               }
             , Cmd.none
             )
-
-        Increment ->
-            ( { model | line = incrementLine model.line }, Cmd.none )
 
 
 type alias OnObjective =
@@ -348,8 +359,15 @@ getCellClass cell =
         Wall ->
             "wall"
 
-        Box _ ->
-            "box"
+        Box onObject ->
+            cn
+                [ "box"
+                , if onObject then
+                    "opened"
+
+                  else
+                    ""
+                ]
 
         Objective ->
             "objective"
@@ -381,6 +399,4 @@ view : Model -> Html Msg
 view model =
     div []
         [ div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
-        , div [] (model.line |> Array.toList |> List.map (\number -> span [] [ text (String.fromInt number) ]))
-        , button [ Html.Events.onClick Increment ] [ text "Increment" ]
         ]
