@@ -205,73 +205,62 @@ updateJustNeighborhood cell nextCell afterNextCell =
             else
                 Empty
     in
-    case cell of
-        Player onObjective ->
-            case nextCell of
-                -- 隣のマスが空マスの場合
-                Empty ->
-                    { neighborhood =
-                        wrapCellsWithJust
-                            (cellAfterPlayerMoved onObjective)
-                            (Player False)
-                            afterNextCell
-                    , isPlayerMoved = True
-                    , openedBoxCountDiff = 0
-                    }
+    case ( cell, nextCell, afterNextCell ) of
+        -- 隣のマスが空マスの場合
+        ( Player onObjective, Empty, _ ) ->
+            { neighborhood =
+                wrapCellsWithJust
+                    (cellAfterPlayerMoved onObjective)
+                    (Player False)
+                    afterNextCell
+            , isPlayerMoved = True
+            , openedBoxCountDiff = 0
+            }
 
-                -- 隣のマスがゴールの場合
-                Objective ->
-                    { neighborhood =
-                        wrapCellsWithJust
-                            (cellAfterPlayerMoved onObjective)
-                            (Player True)
-                            afterNextCell
-                    , isPlayerMoved = True
-                    , openedBoxCountDiff = 0
-                    }
+        -- 隣のマスがゴールの場合
+        ( Player onObjective, Objective, _ ) ->
+            { neighborhood =
+                wrapCellsWithJust
+                    (cellAfterPlayerMoved onObjective)
+                    (Player True)
+                    afterNextCell
+            , isPlayerMoved = True
+            , openedBoxCountDiff = 0
+            }
 
-                -- 隣のマスが宝箱の場合
-                Box isNextOnObject ->
-                    case afterNextCell of
-                        -- 隣の隣のマスが空の場合
-                        Empty ->
-                            { neighborhood =
-                                wrapCellsWithJust
-                                    (cellAfterPlayerMoved onObjective)
-                                    (Player isNextOnObject)
-                                    (Box False)
-                            , isPlayerMoved = True
-                            , openedBoxCountDiff =
-                                if isNextOnObject then
-                                    -1
+        -- 隣のマスが宝箱で、その隣が空マスの場合
+        ( Player onObjective, Box isNextOnObjective, Empty ) ->
+            { neighborhood =
+                wrapCellsWithJust
+                    (cellAfterPlayerMoved onObjective)
+                    (Player isNextOnObjective)
+                    (Box False)
+            , isPlayerMoved = True
+            , openedBoxCountDiff =
+                if isNextOnObjective then
+                    -1
 
-                                else
-                                    0
-                            }
+                else
+                    0
+            }
 
-                        -- 隣の隣のマスがゴールの場合
-                        Objective ->
-                            { neighborhood =
-                                wrapCellsWithJust
-                                    (cellAfterPlayerMoved onObjective)
-                                    (Player isNextOnObject)
-                                    (Box True)
-                            , isPlayerMoved = True
-                            , openedBoxCountDiff =
-                                if isNextOnObject then
-                                    0
+        -- 隣のマスが宝箱で、その隣がゴールの場合
+        ( Player onObjective, Box isNextOnObjective, Objective ) ->
+            { neighborhood =
+                wrapCellsWithJust
+                    (cellAfterPlayerMoved onObjective)
+                    (Player isNextOnObjective)
+                    (Box True)
+            , isPlayerMoved = True
+            , openedBoxCountDiff =
+                if isNextOnObjective then
+                    0
 
-                                else
-                                    1
-                            }
+                else
+                    1
+            }
 
-                        _ ->
-                            noChange
-
-                _ ->
-                    noChange
-
-        _ ->
+        ( _, _, _ ) ->
             noChange
 
 
@@ -284,23 +273,8 @@ updateNeighborhood cells =
             , openedBoxCountDiff = 0
             }
     in
-    -- Maybeがつらいだろうなぁ
-    case cells.current of
-        Nothing ->
-            noChange
-
-        Just cell ->
-            case cells.next of
-                Nothing ->
-                    noChange
-
-                Just nextCell ->
-                    case cells.afterNext of
-                        Nothing ->
-                            noChange
-
-                        Just afterNextCell ->
-                            updateJustNeighborhood cell nextCell afterNextCell
+    Maybe.map3 updateJustNeighborhood cells.current cells.next cells.afterNext
+        |> Maybe.withDefault noChange
 
 
 updateCell : Position -> Maybe Cell -> Stage -> Stage
@@ -309,7 +283,7 @@ updateCell position maybeCell stage =
         maybeRow =
             stage |> Array.get position.y
     in
-    -- つらい
+    -- n次元配列のいい感じの更新方法が思いつきませんでした...
     case maybeCell of
         Nothing ->
             stage
@@ -335,6 +309,7 @@ updateStage stage direction playerPosition =
         afterNextPosition =
             nextPosition |> getNextPosition direction
     in
+    -- ここ、CellのMaybeを外していい感じにやりたいです
     { stage =
         stage
             |> updateCell playerPosition neighborhood.current
