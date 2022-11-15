@@ -1,10 +1,24 @@
+.game {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+.sokoban-level {
+  font-size: 2.5em;
+  color: gray;
+  font-weight: bold;
+  margin: 1rem 0;
+}
+
+/* board */
 .board-row {
   display: flex;
 }
 
 .cell {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 5px;
   margin: 1px;
 }
@@ -41,4 +55,49 @@
 
 .clear-title {
   font-size: 22px;
+}
+
+/* help */
+.help {
+  margin-top: 1rem;
+}
+
+.help .command {
+  text-align: center;
+  font-weight: bold;
+  color: gray;
+}
+
+.help .description {
+  color: gray;
+  padding-left: 1rem;
+}
+
+/* state */
+.sokoban-state {
+  margin-top: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.sokoban-state .description {
+  color: #00b8a9;
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.sokoban-state .action {
+  color: gray;
+  display: flex;
+  align-items: center;
+  animation: bounce 0.35s ease infinite alternate;
+}
+
+@keyframes bounce {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-1rem);
+  }
 }

@@ -114,17 +114,47 @@ stageLine rowNumber line =
     div [ class "board-row" ] (line |> Array.toList |> List.indexedMap (stageCell rowNumber))
 
 
+helpView : Html msg
+helpView =
+    table [ class "help" ]
+        [ tr []
+            [ td [ class "command" ] [ text "↑" ]
+            , td [ class "description" ] [ text "Move" ]
+            ]
+        , tr []
+            [ td [ class "command" ] [ text "← →" ]
+            , td [ class "description" ] [ text "Move" ]
+            ]
+        , tr []
+            [ td [ class "command" ] [ text "↓" ]
+            , td [ class "description" ] [ text "Move" ]
+            ]
+        , tr []
+            [ td [ class "command" ] [ text "Backspace" ]
+            , td [ class "description" ] [ text "Undo" ]
+            ]
+        , tr []
+            [ td [ class "command" ] [ text "Escape" ]
+            , td [ class "description" ] [ text "Restart level" ]
+            ]
+        ]
+
+
 view : Model -> Html Msg
 view model =
-    div []
-        [ div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
-        , div [ class "clear-title" ]
-            [ text
-                (if model.totalBoxCount == model.openedBoxCount then
-                    "Game Clear!"
+    div [ class "game" ]
+        [ div [ class "sokoban-level" ] [ text "Level 1" ]
+        , div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
+        , helpView
+        , div [ class "sokoban-state" ]
+            (if model.openedBoxCount < model.totalBoxCount then
+                []
 
-                 else
-                    ""
-                )
-            ]
+             else
+                [ div [ class "description" ]
+                    [ text "LEVEL completed" ]
+                , div [ class "action" ]
+                    [ text "Press ENTER to load next LEVEL" ]
+                ]
+            )
         ]
