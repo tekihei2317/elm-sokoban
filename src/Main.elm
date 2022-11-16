@@ -7,6 +7,7 @@ import Html exposing (..)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode
 import Sokoban
+import SokobanJson
 
 
 main : Program () Model Msg
@@ -32,20 +33,25 @@ type alias Position =
     }
 
 
-type alias Model =
+type alias StageInfo =
     { stage : Sokoban.Stage
     , playerPosition : Position
-    , totalBoxCount : Int
-    , openedBoxCount : Int
+    , boxCount : Int
+    }
+
+
+type alias Model =
+    { currentLevelIndex : Int
+    , selectedStage : StageInfo
+    , currentState : StageInfo
     }
 
 
 initialModel : () -> ( Model, Cmd msg )
 initialModel _ =
-    ( { stage = initialStage |> Sokoban.convertStringStage
-      , playerPosition = { y = 1, x = 1 }
-      , totalBoxCount = 2
-      , openedBoxCount = 0
+    ( { currentLevelIndex = 0
+      , selectedStage = { stage = initialStage |> Sokoban.convertStringStage, playerPosition = { y = 1, x = 1 }, boxCount = 2 }
+      , currentState = { stage = initialStage |> Sokoban.convertStringStage, playerPosition = { y = 1, x = 1 }, boxCount = 0 }
       }
     , Cmd.none
     )
@@ -73,23 +79,30 @@ type Msg
 
 update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
+    let
+        currentState =
+            model.currentState
+    in
     case msg of
         Keypress direction ->
             let
                 { stage, isPlayerMoved, openedBoxCountDiff } =
-                    Sokoban.updateStage model.stage direction model.playerPosition
+                    Sokoban.updateStage currentState.stage direction currentState.playerPosition
 
                 playerPosition =
                     if isPlayerMoved then
-                        Sokoban.updatePosition direction model.playerPosition
+                        Sokoban.updatePosition direction currentState.playerPosition
 
                     else
-                        model.playerPosition
+                        currentState.playerPosition
             in
             ( { model
-                | stage = stage
-                , playerPosition = playerPosition
-                , openedBoxCount = model.openedBoxCount + openedBoxCountDiff
+                | currentState =
+                    { currentState
+                        | stage = stage
+                        , playerPosition = playerPosition
+                        , boxCount = currentState.boxCount + openedBoxCountDiff
+                    }
               }
             , Cmd.none
             )
@@ -144,10 +157,10 @@ view : Model -> Html Msg
 view model =
     div [ class "game" ]
         [ div [ class "sokoban-level" ] [ text "Level 1" ]
-        , div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
+        , div [] (model.currentState.stage |> Array.toList |> List.indexedMap stageLine)
         , helpView
         , div [ class "sokoban-state" ]
-            (if model.openedBoxCount < model.totalBoxCount then
+            (if model.currentState.boxCount < model.selectedStage.boxCount then
                 []
 
              else
