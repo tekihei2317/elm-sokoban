@@ -1,4 +1,4 @@
-module Sokoban exposing (Cell, Direction, Position, Stage, convertStringStage, getCellClass, getNextPosition, toDirection, updatePosition, updateStage)
+module Sokoban exposing (Cell, Direction, Position, Stage, StageInfo, convertStringStage, getCellClass, toDirection, updatePosition, updateStage)
 
 import Array exposing (Array)
 
@@ -17,6 +17,13 @@ type Cell
 
 type alias Stage =
     Array (Array Cell)
+
+
+type alias StageInfo =
+    { stage : Stage
+    , playerPosition : Position
+    , boxCount : Int
+    }
 
 
 type Direction
@@ -142,9 +149,75 @@ getCellClass cell =
             "empty"
 
 
-convertStringStage : List String -> Stage
-convertStringStage stage =
-    stage |> Array.fromList |> Array.map (\line -> line |> String.split "" |> List.map stringToCell |> Array.fromList)
+foldPlayers : Array (Maybe Position) -> Maybe Position
+foldPlayers maybePlayers =
+    maybePlayers
+        |> Array.foldl
+            (\maybePlayer sum ->
+                case ( sum, maybePlayer ) of
+                    ( Just player, _ ) ->
+                        Just player
+
+                    ( Nothing, Just player ) ->
+                        Just player
+
+                    ( Nothing, Nothing ) ->
+                        Nothing
+            )
+            Nothing
+
+
+findPlayerPosition : Stage -> Position
+findPlayerPosition stage =
+    stage
+        |> Array.indexedMap
+            (\y line ->
+                line
+                    |> Array.indexedMap
+                        (\x cell ->
+                            case cell of
+                                Player _ ->
+                                    Just { y = y, x = x }
+
+                                _ ->
+                                    Nothing
+                        )
+                    |> foldPlayers
+            )
+        |> foldPlayers
+        |> Maybe.withDefault { y = 1, x = 1 }
+
+
+countBoxes : Stage -> Int
+countBoxes stage =
+    stage
+        |> Array.map
+            (\line ->
+                line
+                    |> Array.foldl
+                        (\cell count ->
+                            case cell of
+                                Box _ ->
+                                    count + 1
+
+                                _ ->
+                                    count
+                        )
+                        0
+            )
+        |> Array.foldl (+) 0
+
+
+convertStringStage : Array String -> StageInfo
+convertStringStage stringStage =
+    let
+        stage =
+            stringStage |> Array.map (\line -> line |> String.split "" |> List.map stringToCell |> Array.fromList)
+    in
+    { stage = stage
+    , playerPosition = findPlayerPosition stage
+    , boxCount = countBoxes stage
+    }
 
 
 getNextPosition : Direction -> Position -> Position

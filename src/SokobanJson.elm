@@ -1,8 +1,9 @@
-module SokobanJson exposing (Level, LevelCollection, StagesData, stages)
+module SokobanJson exposing (Level, LevelCollection, StagesData, initialStage, stagesOrError)
 
 import Array exposing (Array)
 import Json.Decode exposing (Decoder, array, decodeString, string, succeed)
 import Json.Decode.Pipeline exposing (required)
+import Sokoban exposing (StageInfo)
 
 
 type alias Level =
@@ -47,9 +48,43 @@ stagesDecoder =
         |> required "levelCollection" levelCollectionDecoder
 
 
-stages : Result Json.Decode.Error StagesData
-stages =
+stagesOrError : Result Json.Decode.Error StagesData
+stagesOrError =
     decodeString stagesDecoder jsonStages
+
+
+
+-- 現在のステージをResult型にしたくないので、適当なデフォルト値を使う
+
+
+defaultStage : Array String
+defaultStage =
+    [ "#####"
+    , "#@  #"
+    , "# $ #"
+    , "### #"
+    , "#.$ #"
+    , "#  .#"
+    , "#####"
+    ]
+        |> Array.fromList
+
+
+initialStage : Sokoban.StageInfo
+initialStage =
+    let
+        defaultStageInfo =
+            defaultStage |> Sokoban.convertStringStage
+    in
+    stagesOrError
+        |> Result.map
+            (\stages ->
+                stages.levelCollection.level
+                    |> Array.get 0
+                    |> Maybe.map (\level -> level.l |> Sokoban.convertStringStage)
+                    |> Maybe.withDefault defaultStageInfo
+            )
+        |> Result.withDefault defaultStageInfo
 
 
 jsonStages : String

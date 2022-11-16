@@ -27,46 +27,25 @@ subscriptions _ =
         ]
 
 
-type alias Position =
-    { x : Int
-    , y : Int
-    }
-
-
-type alias StageInfo =
-    { stage : Sokoban.Stage
-    , playerPosition : Position
-    , boxCount : Int
-    }
-
-
 type alias Model =
     { currentLevelIndex : Int
-    , selectedStage : StageInfo
-    , currentState : StageInfo
+    , selectedStage : Sokoban.StageInfo
+    , currentState : Sokoban.StageInfo
     }
 
 
 initialModel : () -> ( Model, Cmd msg )
 initialModel _ =
+    let
+        initialStage =
+            SokobanJson.initialStage
+    in
     ( { currentLevelIndex = 0
-      , selectedStage = { stage = initialStage |> Sokoban.convertStringStage, playerPosition = { y = 1, x = 1 }, boxCount = 2 }
-      , currentState = { stage = initialStage |> Sokoban.convertStringStage, playerPosition = { y = 1, x = 1 }, boxCount = 0 }
+      , selectedStage = initialStage
+      , currentState = { initialStage | boxCount = 0 }
       }
     , Cmd.none
     )
-
-
-initialStage : List String
-initialStage =
-    [ "#####"
-    , "#@  #"
-    , "# $ #"
-    , "### #"
-    , "#.$ #"
-    , "#  .#"
-    , "#####"
-    ]
 
 
 keyDecoder =
