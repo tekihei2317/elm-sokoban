@@ -23,7 +23,8 @@ main =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
-        [ onKeyDown (Decode.map Keypress keyDecoder)
+        [ onKeyDown (Decode.map Keypress directionKeyDecoder)
+        , onKeyDown (Decode.map UpdateStage updateCommandDecoder)
         ]
 
 
@@ -48,12 +49,68 @@ initialModel _ =
     )
 
 
-keyDecoder =
+directionKeyDecoder : Decode.Decoder Sokoban.Direction
+directionKeyDecoder =
     Decode.map Sokoban.toDirection (Decode.field "key" Decode.string)
+
+
+type StageUpdateCommand
+    = Undo
+    | Restart
+    | NextStage
+    | Nothing
+
+
+stringToUpdateCommand : String -> StageUpdateCommand
+stringToUpdateCommand key =
+    case key of
+        "Backspace" ->
+            Undo
+
+        "Escape" ->
+            Restart
+
+        "Enter" ->
+            NextStage
+
+        _ ->
+            Nothing
+
+
+updateCommandDecoder : Decode.Decoder StageUpdateCommand
+updateCommandDecoder =
+    Decode.map stringToUpdateCommand (Decode.field "key" Decode.string)
 
 
 type Msg
     = Keypress Sokoban.Direction
+    | UpdateStage StageUpdateCommand
+
+
+handleRestart : Model -> Model
+handleRestart model =
+    let
+        selectedStage =
+            model.selectedStage
+    in
+    { model | currentState = { selectedStage | boxCount = 0 } }
+
+
+handleGoToNextStage : Sokoban.StageInfo -> Model -> Model
+handleGoToNextStage nextStage model =
+    let
+        isFinished =
+            model.currentState.boxCount == model.selectedStage.boxCount
+    in
+    if not isFinished then
+        model
+
+    else
+        { model
+            | currentLevelIndex = model.currentLevelIndex + 1
+            , selectedStage = nextStage
+            , currentState = { nextStage | boxCount = 0 }
+        }
 
 
 update : Msg -> Model -> ( Model, Cmd msg )
@@ -85,6 +142,29 @@ update msg model =
               }
             , Cmd.none
             )
+
+        UpdateStage command ->
+            case command of
+                Undo ->
+                    ( model, Cmd.none )
+
+                Restart ->
+                    ( model |> handleRestart, Cmd.none )
+
+                NextStage ->
+                    let
+                        maybeNextStage =
+                            SokobanJson.getStageByIndex (model.currentLevelIndex + 1)
+                    in
+                    case maybeNextStage of
+                        Just nextStage ->
+                            ( model |> handleGoToNextStage nextStage, Cmd.none )
+
+                        Maybe.Nothing ->
+                            ( model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
 
 cn : List String -> String
@@ -121,10 +201,12 @@ helpView =
             [ td [ class "command" ] [ text "↓" ]
             , td [ class "description" ] [ text "Move" ]
             ]
-        , tr []
-            [ td [ class "command" ] [ text "Backspace" ]
-            , td [ class "description" ] [ text "Undo" ]
-            ]
+
+        -- TODO:
+        -- , tr []
+        --     [ td [ class "command" ] [ text "Backspace" ]
+        --     , td [ class "description" ] [ text "Undo" ]
+        --     ]
         , tr []
             [ td [ class "command" ] [ text "Escape" ]
             , td [ class "description" ] [ text "Restart level" ]
@@ -135,7 +217,7 @@ helpView =
 view : Model -> Html Msg
 view model =
     div [ class "game" ]
-        [ div [ class "sokoban-level" ] [ text "Level 1" ]
+        [ div [ class "sokoban-level" ] [ text ("Level " ++ (model.currentLevelIndex + 1 |> String.fromInt)) ]
         , div [] (model.currentState.stage |> Array.toList |> List.indexedMap stageLine)
         , helpView
         , div [ class "sokoban-state" ]

@@ -1,4 +1,4 @@
-module SokobanJson exposing (Level, LevelCollection, StagesData, initialStage, stagesOrError)
+module SokobanJson exposing (Level, LevelCollection, StagesData, getStageByIndex, initialStage)
 
 import Array exposing (Array)
 import Json.Decode exposing (Decoder, array, decodeString, string, succeed)
@@ -85,6 +85,14 @@ initialStage =
                     |> Maybe.withDefault defaultStageInfo
             )
         |> Result.withDefault defaultStageInfo
+
+
+getStageByIndex : Int -> Maybe StageInfo
+getStageByIndex stageIndex =
+    stagesOrError
+        |> Result.map
+            (\stages -> stages.levelCollection.level |> Array.get stageIndex |> Maybe.map (\level -> level.l |> Sokoban.convertStringStage))
+        |> Result.withDefault (Just (defaultStage |> Sokoban.convertStringStage))
 
 
 jsonStages : String
