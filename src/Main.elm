@@ -6,6 +6,8 @@ import Browser.Events exposing (onKeyDown)
 import Html exposing (..)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode
+import Sokoban
+import SokobanJson
 
 
 main : Program () Model Msg
@@ -21,408 +23,148 @@ main =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
-        [ onKeyDown (Decode.map Keypress keyDecoder)
+        [ onKeyDown (Decode.map Keypress directionKeyDecoder)
+        , onKeyDown (Decode.map UpdateStage updateCommandDecoder)
         ]
 
 
-type alias Position =
-    { x : Int
-    , y : Int
-    }
-
-
 type alias Model =
-    { stage : Array (Array Cell)
-    , playerPosition : Position
-    , totalBoxCount : Int
-    , openedBoxCount : Int
+    { currentLevelIndex : Int
+    , selectedStage : Sokoban.StageInfo
+    , currentState : Sokoban.StageInfo
     }
 
 
 initialModel : () -> ( Model, Cmd msg )
 initialModel _ =
-    ( { stage = initialStage |> convertStringStage
-      , playerPosition = { y = 1, x = 1 }
-      , totalBoxCount = 2
-      , openedBoxCount = 0
+    let
+        initialStage =
+            SokobanJson.initialStage
+    in
+    ( { currentLevelIndex = 0
+      , selectedStage = initialStage
+      , currentState = { initialStage | boxCount = 0 }
       }
     , Cmd.none
     )
 
 
-initialStage : List String
-initialStage =
-    [ "#####"
-    , "#@  #"
-    , "# $ #"
-    , "### #"
-    , "#.$ #"
-    , "#  .#"
-    , "#####"
-    ]
+directionKeyDecoder : Decode.Decoder Sokoban.Direction
+directionKeyDecoder =
+    Decode.map Sokoban.toDirection (Decode.field "key" Decode.string)
 
 
-convertStringStage : List String -> Array (Array Cell)
-convertStringStage stage =
-    stage |> Array.fromList |> Array.map (\line -> line |> String.split "" |> List.map stringToCell |> Array.fromList)
+type StageUpdateCommand
+    = Undo
+    | Restart
+    | NextStage
+    | Nothing
 
 
-type Direction
-    = Left
-    | Right
-    | Up
-    | Down
-    | Other
+stringToUpdateCommand : String -> StageUpdateCommand
+stringToUpdateCommand key =
+    case key of
+        "Backspace" ->
+            Undo
 
+        "Escape" ->
+            Restart
 
-toDirection : String -> Direction
-toDirection string =
-    case string of
-        "ArrowLeft" ->
-            Left
-
-        "ArrowRight" ->
-            Right
-
-        "ArrowUp" ->
-            Up
-
-        "ArrowDown" ->
-            Down
+        "Enter" ->
+            NextStage
 
         _ ->
-            Other
+            Nothing
 
 
-keyDecoder =
-    Decode.map toDirection (Decode.field "key" Decode.string)
+updateCommandDecoder : Decode.Decoder StageUpdateCommand
+updateCommandDecoder =
+    Decode.map stringToUpdateCommand (Decode.field "key" Decode.string)
 
 
 type Msg
-    = Keypress Direction
+    = Keypress Sokoban.Direction
+    | UpdateStage StageUpdateCommand
 
 
-updatePosition : Direction -> Position -> Position
-updatePosition direction position =
-    case direction of
-        Up ->
-            { position | y = position.y - 1 }
-
-        Down ->
-            { position | y = position.y + 1 }
-
-        Right ->
-            { position | x = position.x + 1 }
-
-        Left ->
-            { position | x = position.x - 1 }
-
-        _ ->
-            position
-
-
-type alias Neighborhood =
-    { current : Maybe Cell
-    , next : Maybe Cell
-    , afterNext : Maybe Cell
-    }
-
-
-wrapCellsWithJust : Cell -> Cell -> Cell -> Neighborhood
-wrapCellsWithJust cell nextCell afterNextCell =
-    { current = Just cell
-    , next = Just nextCell
-    , afterNext = Just afterNextCell
-    }
-
-
-type alias UpdateNeighborhoodResult =
-    { neighborhood : Neighborhood
-    , isPlayerMoved : Bool
-    , openedBoxCountDiff : Int
-    }
-
-
-updateJustNeighborhood : Cell -> Cell -> Cell -> UpdateNeighborhoodResult
-updateJustNeighborhood cell nextCell afterNextCell =
+handleRestart : Model -> Model
+handleRestart model =
     let
-        noChange =
-            { neighborhood = wrapCellsWithJust cell nextCell afterNextCell
-            , isPlayerMoved = False
-            , openedBoxCountDiff = 0
-            }
-
-        cellAfterPlayerMoved isPlayerOnObjective =
-            if isPlayerOnObjective then
-                Objective
-
-            else
-                Empty
+        selectedStage =
+            model.selectedStage
     in
-    case cell of
-        Player onObjective ->
-            case nextCell of
-                -- 隣のマスが空マスの場合
-                Empty ->
-                    { neighborhood =
-                        wrapCellsWithJust
-                            (cellAfterPlayerMoved onObjective)
-                            (Player False)
-                            afterNextCell
-                    , isPlayerMoved = True
-                    , openedBoxCountDiff = 0
-                    }
-
-                -- 隣のマスがゴールの場合
-                Objective ->
-                    { neighborhood =
-                        wrapCellsWithJust
-                            (cellAfterPlayerMoved onObjective)
-                            (Player True)
-                            afterNextCell
-                    , isPlayerMoved = True
-                    , openedBoxCountDiff = 0
-                    }
-
-                -- 隣のマスが宝箱の場合
-                Box isNextOnObject ->
-                    case afterNextCell of
-                        -- 隣の隣のマスが空の場合
-                        Empty ->
-                            { neighborhood =
-                                wrapCellsWithJust
-                                    (cellAfterPlayerMoved onObjective)
-                                    (Player isNextOnObject)
-                                    (Box False)
-                            , isPlayerMoved = True
-                            , openedBoxCountDiff =
-                                if isNextOnObject then
-                                    -1
-
-                                else
-                                    0
-                            }
-
-                        -- 隣の隣のマスがゴールの場合
-                        Objective ->
-                            { neighborhood =
-                                wrapCellsWithJust
-                                    (cellAfterPlayerMoved onObjective)
-                                    (Player isNextOnObject)
-                                    (Box True)
-                            , isPlayerMoved = True
-                            , openedBoxCountDiff =
-                                if isNextOnObject then
-                                    0
-
-                                else
-                                    1
-                            }
-
-                        _ ->
-                            noChange
-
-                _ ->
-                    noChange
-
-        _ ->
-            noChange
+    { model | currentState = { selectedStage | boxCount = 0 } }
 
 
-updateNeighborhood : Neighborhood -> UpdateNeighborhoodResult
-updateNeighborhood cells =
+handleGoToNextStage : Sokoban.StageInfo -> Model -> Model
+handleGoToNextStage nextStage model =
     let
-        noChange =
-            { neighborhood = cells
-            , isPlayerMoved = False
-            , openedBoxCountDiff = 0
-            }
+        isFinished =
+            model.currentState.boxCount == model.selectedStage.boxCount
     in
-    -- Maybeがつらいだろうなぁ
-    case cells.current of
-        Nothing ->
-            noChange
+    if not isFinished then
+        model
 
-        Just cell ->
-            case cells.next of
-                Nothing ->
-                    noChange
-
-                Just nextCell ->
-                    case cells.afterNext of
-                        Nothing ->
-                            noChange
-
-                        Just afterNextCell ->
-                            updateJustNeighborhood cell nextCell afterNextCell
-
-
-getNextPosition : Direction -> Position -> Position
-getNextPosition direction position =
-    case direction of
-        Up ->
-            { position | y = position.y - 1 }
-
-        Down ->
-            { position | y = position.y + 1 }
-
-        Right ->
-            { position | x = position.x + 1 }
-
-        Left ->
-            { position | x = position.x - 1 }
-
-        _ ->
-            position
-
-
-getNeighborhood : Array (Array Cell) -> Direction -> Position -> Neighborhood
-getNeighborhood stage direction position =
-    let
-        nextPosition =
-            position |> getNextPosition direction
-
-        afterNextPosition =
-            nextPosition |> getNextPosition direction
-    in
-    { current = stage |> Array.get position.y |> Maybe.andThen (Array.get position.x)
-    , next = stage |> Array.get nextPosition.y |> Maybe.andThen (Array.get nextPosition.x)
-    , afterNext = stage |> Array.get afterNextPosition.y |> Maybe.andThen (Array.get afterNextPosition.x)
-    }
-
-
-type alias Stage =
-    Array (Array Cell)
-
-
-updateCell : Position -> Maybe Cell -> Stage -> Stage
-updateCell position maybeCell stage =
-    let
-        maybeRow =
-            stage |> Array.get position.y
-    in
-    -- つらい
-    case maybeCell of
-        Nothing ->
-            stage
-
-        Just cell ->
-            case maybeRow of
-                Nothing ->
-                    stage
-
-                Just row ->
-                    stage |> Array.set position.y (row |> Array.set position.x cell)
-
-
-type alias UpdateStageResult =
-    { stage : Stage
-    , isPlayerMoved : Bool
-    , openedBoxCountDiff : Int
-    }
-
-
-updateStage : Stage -> Direction -> Position -> UpdateStageResult
-updateStage stage direction playerPosition =
-    let
-        { neighborhood, isPlayerMoved, openedBoxCountDiff } =
-            getNeighborhood stage direction playerPosition |> updateNeighborhood
-
-        nextPosition =
-            playerPosition |> getNextPosition direction
-
-        afterNextPosition =
-            nextPosition |> getNextPosition direction
-    in
-    { stage =
-        stage
-            |> updateCell playerPosition neighborhood.current
-            |> updateCell nextPosition neighborhood.next
-            |> updateCell afterNextPosition neighborhood.afterNext
-    , isPlayerMoved = isPlayerMoved
-    , openedBoxCountDiff = openedBoxCountDiff
-    }
+    else
+        { model
+            | currentLevelIndex = model.currentLevelIndex + 1
+            , selectedStage = nextStage
+            , currentState = { nextStage | boxCount = 0 }
+        }
 
 
 update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
+    let
+        currentState =
+            model.currentState
+    in
     case msg of
         Keypress direction ->
             let
                 { stage, isPlayerMoved, openedBoxCountDiff } =
-                    updateStage model.stage direction model.playerPosition
+                    Sokoban.updateStage currentState.stage direction currentState.playerPosition
 
                 playerPosition =
                     if isPlayerMoved then
-                        updatePosition direction model.playerPosition
+                        Sokoban.updatePosition direction currentState.playerPosition
 
                     else
-                        model.playerPosition
+                        currentState.playerPosition
             in
             ( { model
-                | stage = stage
-                , playerPosition = playerPosition
-                , openedBoxCount = model.openedBoxCount + openedBoxCountDiff
+                | currentState =
+                    { currentState
+                        | stage = stage
+                        , playerPosition = playerPosition
+                        , boxCount = currentState.boxCount + openedBoxCountDiff
+                    }
               }
             , Cmd.none
             )
 
+        UpdateStage command ->
+            case command of
+                Undo ->
+                    ( model, Cmd.none )
 
-type alias OnObjective =
-    Bool
+                Restart ->
+                    ( model |> handleRestart, Cmd.none )
 
+                NextStage ->
+                    let
+                        maybeNextStage =
+                            SokobanJson.getStageByIndex (model.currentLevelIndex + 1)
+                    in
+                    case maybeNextStage of
+                        Just nextStage ->
+                            ( model |> handleGoToNextStage nextStage, Cmd.none )
 
-type Cell
-    = Empty
-    | Objective
-    | Wall
-    | Player OnObjective
-    | Box OnObjective
+                        Maybe.Nothing ->
+                            ( model, Cmd.none )
 
-
-stringToCell : String -> Cell
-stringToCell str =
-    if str == "@" then
-        Player False
-
-    else if str == "#" then
-        Wall
-
-    else if str == "$" then
-        Box False
-
-    else if str == "." then
-        Objective
-
-    else
-        Empty
-
-
-getCellClass : Cell -> String
-getCellClass cell =
-    case cell of
-        -- プレイヤーは位置をもとにクラスをつける
-        Player _ ->
-            "player"
-
-        Wall ->
-            "wall"
-
-        Box onObject ->
-            cn
-                [ "box"
-                , if onObject then
-                    "opened"
-
-                  else
-                    ""
-                ]
-
-        Objective ->
-            "objective"
-
-        Empty ->
-            "empty"
+                Nothing ->
+                    ( model, Cmd.none )
 
 
 cn : List String -> String
@@ -430,31 +172,63 @@ cn classNames =
     String.join " " classNames
 
 
-stageCell : Int -> Int -> Cell -> Html msg
+stageCell : Int -> Int -> Sokoban.Cell -> Html msg
 stageCell _ _ cell =
     let
         cellClass =
-            getCellClass cell
+            Sokoban.getCellClass cell
     in
     div [ class (cn [ "cell", cellClass ]) ] []
 
 
-stageLine : Int -> Array Cell -> Html msg
+stageLine : Int -> Array Sokoban.Cell -> Html msg
 stageLine rowNumber line =
     div [ class "board-row" ] (line |> Array.toList |> List.indexedMap (stageCell rowNumber))
 
 
+helpView : Html msg
+helpView =
+    table [ class "help" ]
+        [ tr []
+            [ td [ class "command" ] [ text "↑" ]
+            , td [ class "description" ] [ text "Move" ]
+            ]
+        , tr []
+            [ td [ class "command" ] [ text "← →" ]
+            , td [ class "description" ] [ text "Move" ]
+            ]
+        , tr []
+            [ td [ class "command" ] [ text "↓" ]
+            , td [ class "description" ] [ text "Move" ]
+            ]
+
+        -- TODO:
+        -- , tr []
+        --     [ td [ class "command" ] [ text "Backspace" ]
+        --     , td [ class "description" ] [ text "Undo" ]
+        --     ]
+        , tr []
+            [ td [ class "command" ] [ text "Escape" ]
+            , td [ class "description" ] [ text "Restart level" ]
+            ]
+        ]
+
+
 view : Model -> Html Msg
 view model =
-    div []
-        [ div [] (model.stage |> Array.toList |> List.indexedMap stageLine)
-        , div [ class "clear-title" ]
-            [ text
-                (if model.totalBoxCount == model.openedBoxCount then
-                    "Game Clear!"
+    div [ class "game" ]
+        [ div [ class "sokoban-level" ] [ text ("Level " ++ (model.currentLevelIndex + 1 |> String.fromInt)) ]
+        , div [] (model.currentState.stage |> Array.toList |> List.indexedMap stageLine)
+        , helpView
+        , div [ class "sokoban-state" ]
+            (if model.currentState.boxCount < model.selectedStage.boxCount then
+                []
 
-                 else
-                    ""
-                )
-            ]
+             else
+                [ div [ class "description" ]
+                    [ text "LEVEL completed" ]
+                , div [ class "action" ]
+                    [ text "Press ENTER to load next LEVEL" ]
+                ]
+            )
         ]
